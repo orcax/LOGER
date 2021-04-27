@@ -311,7 +311,7 @@ class KGEModel(nn.Module):
         return log
     
     @staticmethod
-    def test_step(model, test_triples, all_true_triples, args):
+    def test_step(model, test_triples, test_candidates, all_true_triples, args):
         '''
         Evaluate the model on test or valid datasets
         '''
@@ -348,6 +348,7 @@ class KGEModel(nn.Module):
             test_dataloader_head = DataLoader(
                 TestDataset(
                     test_triples, 
+                    test_candidates,
                     all_true_triples, 
                     args.nentity, 
                     args.nrelation, 
@@ -361,6 +362,7 @@ class KGEModel(nn.Module):
             test_dataloader_tail = DataLoader(
                 TestDataset(
                     test_triples, 
+                    test_candidates,
                     all_true_triples, 
                     args.nentity, 
                     args.nrelation, 
@@ -387,11 +389,12 @@ class KGEModel(nn.Module):
 
             with torch.no_grad():
                 for test_dataset in test_dataset_list:
-                    for positive_sample, negative_sample, filter_bias, mode in test_dataset:
+                    for positive_sample, negative_sample, filter_bias, mode, candidates in test_dataset:
                         if args.cuda:
                             positive_sample = positive_sample.cuda()
                             negative_sample = negative_sample.cuda()
                             filter_bias = filter_bias.cuda()
+                            candidates = candidates.cuda()
 
                         # Save prediction results
                         prediction = positive_sample.data.cpu().numpy().tolist()
@@ -402,31 +405,41 @@ class KGEModel(nn.Module):
                         score += filter_bias
 
                         #Explicitly sort all the entities to ensure that there is no test exposure bias
-                        valsort, argsort = torch.sort(score, dim = 1, descending=True)
+                        # valsort, argsort = torch.sort(score, dim = 1, descending=True)
 
-                        if mode == 'head-batch':
-                            positive_arg = positive_sample[:, 0]
-                        elif mode == 'tail-batch':
-                            positive_arg = positive_sample[:, 2]
-                        else:
-                            raise ValueError('mode %s not supported' % mode)
+                        # if mode == 'head-batch':
+                        #     positive_arg = positive_sample[:, 0]
+                        # elif mode == 'tail-batch':
+                        #     positive_arg = positive_sample[:, 2]
+                        # else:
+                        #     raise ValueError('mode %s not supported' % mode)
 
                         for i in range(batch_size):
                             #Notice that argsort is not ranking
-                            ranking = (argsort[i, :] == positive_arg[i]).nonzero()
-                            assert ranking.size(0) == 1
+                            # ranking = (argsort[i, :] == positive_arg[i]).nonzero()
+                            # assert ranking.size(0) == 1
 
                             # For each test triplet, save the ranked list (h, r, [ts]) and ([hs], r, t)
-                            if mode == 'head-batch':
-                                prediction[i].append('h')
-                                prediction[i].append(ranking.item() + 1)
-                                ls = zip(argsort[i, 0:args.topk].data.cpu().numpy().tolist(), valsort[i, 0:args.topk].data.cpu().numpy().tolist())
-                                prediction[i].append(ls)
-                            elif mode == 'tail-batch':
-                                prediction[i].append('t')
-                                prediction[i].append(ranking.item() + 1)
-                                ls = zip(argsort[i, 0:args.topk].data.cpu().numpy().tolist(), valsort[i, 0:args.topk].data.cpu().numpy().tolist())
-                                prediction[i].append(ls)
+                            # if mode == 'head-batch':
+                            #     prediction[i].append('h')
+                            #     prediction[i].append(ranking.item() + 1)
+                            #     ls = zip(argsort[i, 0:args.topk].data.cpu().numpy().tolist(), valsort[i, 0:args.topk].data.cpu().numpy().tolist())
+                            #     prediction[i].append(ls)
+                            # elif mode == 'tail-batch':
+                            #     prediction[i].append('t')
+                            #     prediction[i].append(ranking.item() + 1)
+                            #     prediction[i].append(ls)
+
+                            # sort for rec task
+                            valsort, argsort = torch.sort(score[i][candidates[i]], dim=0, descending=True)
+                            ranking = (argsort == 0).nonzero()
+                            assert ranking.size(0) == 1
+
+                            # For each test triplet, save the ranked list (h, r, [ts])
+                            prediction[i].append('h')
+                            prediction[i].append(ranking.item() + 1)
+                            ls = zip(candidates[i].data.cpu().numpy().tolist(), score[i][candidates[i]].data.cpu().numpy().tolist())
+                            prediction[i].append(ls)
 
                             #ranking + 1 is the true ranking used in evaluation metrics
                             ranking = 1 + ranking.item()

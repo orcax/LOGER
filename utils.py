@@ -114,16 +114,22 @@ def augment_triplet(pred_file, trip_file, out_file, threshold):
             l = line.strip().split()
             data += [(l[0], l[1], l[2], float(l[3]))]
 
+    print(len(data))
+
     with open(trip_file, 'r') as fi:
         trip = set()
         for line in fi:
             l = line.strip().split()
             trip.add((l[0], l[1], l[2]))
 
+        print(len(trip))
+
         for tp in data:
             if tp[3] < threshold:
                 continue
             trip.add((tp[0], tp[1], tp[2]))
+
+        print(len(trip))
 
     with open(out_file, 'w') as fo:
         for h, r, t in trip:

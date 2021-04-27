@@ -20,6 +20,8 @@ from model import KGEModel
 from dataloader import TrainDataset
 from dataloader import BidirectionalOneShotIterator
 
+import gzip
+
 def parse_args(args=None):
     parser = argparse.ArgumentParser(
         description='Training and Testing Knowledge Graph Embedding Models',
@@ -63,7 +65,7 @@ def parse_args(args=None):
     
     parser.add_argument('--save_checkpoint_steps', default=10000, type=int)
     parser.add_argument('--valid_steps', default=10000, type=int)
-    parser.add_argument('--log_steps', default=100, type=int, help='train log every xx steps')
+    parser.add_argument('--log_steps', default=10000, type=int, help='train log every xx steps')
     parser.add_argument('--test_log_steps', default=1000, type=int, help='valid/test log every xx steps')
     
     parser.add_argument('--nentity', type=int, default=0, help='DO NOT MANUALLY SET')
@@ -127,6 +129,17 @@ def read_triple(file_path, entity2id, relation2id):
     triples = []
     with open(file_path) as fin:
         for line in fin:
+            h, t, r = line.strip().split('\t')
+            triples.append((int(h), int(r), int(t)))
+    return triples
+
+def read_triple_fb(file_path, entity2id, relation2id):
+    '''
+    Read triples and map them into ids.
+    '''
+    triples = []
+    with open(file_path) as fin:
+        for line in fin:
             h, r, t = line.strip().split('\t')
             triples.append((entity2id[h], relation2id[r], entity2id[t]))
     return triples
@@ -166,8 +179,8 @@ def ensure_dir(d):
         os.makedirs(d)
         
 def main(args):
-    if (not args.do_train) and (not args.do_valid) and (not args.do_test):
-        raise ValueError('one of train/val/test mode must be choosed.')
+    # if (not args.do_train) and (not args.do_valid) and (not args.do_test):
+        # raise ValueError('one of train/val/test mode must be choosed.')
     
     if args.init_checkpoint:
         override_config(args)
@@ -183,30 +196,51 @@ def main(args):
     # Write logs to checkpoint and console
     set_logger(args)
     
-    with open(os.path.join(args.data_path, 'entities.dict')) as fin:
+    # with open(os.path.join(args.data_path, 'entities.dict')) as fin:
+    #     entity2id = dict()
+    #     id2entity = dict()
+    #     for line in fin:
+    #         eid, entity = line.strip().split('\t')
+    #         entity2id[entity] = int(eid)
+    #         id2entity[int(eid)] = entity
+
+    # with open(os.path.join(args.data_path, 'relations.dict')) as fin:
+    #     relation2id = dict()
+    #     id2relation = dict()
+    #     for line in fin:
+    #         rid, relation = line.strip().split('\t')
+    #         relation2id[relation] = int(rid)
+    #         id2relation[int(rid)] = relation
+    
+    # # Read regions for Countries S* datasets
+    # if args.countries:
+    #     regions = list()
+    #     with open(os.path.join(args.data_path, 'regions.list')) as fin:
+    #         for line in fin:
+    #             region = line.strip()
+    #             regions.append(entity2id[region])
+    #     args.regions = regions
+
+    '''amazon dataset'''
+    with open(os.path.join(args.data_path, 'entity2id.txt')) as fin:
         entity2id = dict()
         id2entity = dict()
         for line in fin:
-            eid, entity = line.strip().split('\t')
+            if len(line.strip().split('\t')) < 2:
+                continue
+            entity, eid = line.strip().split('\t')
             entity2id[entity] = int(eid)
             id2entity[int(eid)] = entity
 
-    with open(os.path.join(args.data_path, 'relations.dict')) as fin:
+    with open(os.path.join(args.data_path, 'relation2id.txt')) as fin:
         relation2id = dict()
         id2relation = dict()
         for line in fin:
-            rid, relation = line.strip().split('\t')
+            if len(line.strip().split('\t')) < 2:
+                continue
+            relation, rid = line.strip().split('\t')
             relation2id[relation] = int(rid)
             id2relation[int(rid)] = relation
-    
-    # Read regions for Countries S* datasets
-    if args.countries:
-        regions = list()
-        with open(os.path.join(args.data_path, 'regions.list')) as fin:
-            for line in fin:
-                region = line.strip()
-                regions.append(entity2id[region])
-        args.regions = regions
 
     nentity = len(entity2id)
     nrelation = len(relation2id)
@@ -226,15 +260,29 @@ def main(args):
     # the original triplets (train_kge.txt) for evaluation.
     # Also, the hidden triplets (hidden.txt) are also loaded for annotation.
     # --------------------------------------------------
+    # train_triples = read_triple(os.path.join(args.workspace_path, 'train_kge.txt'), entity2id, relation2id)
+    # logging.info('#train: %d' % len(train_triples))
+    # train_original_triples = read_triple(os.path.join(args.data_path, 'train.txt'), entity2id, relation2id)
+    # logging.info('#train original: %d' % len(train_original_triples))
+    # valid_triples = read_triple(os.path.join(args.data_path, 'valid.txt'), entity2id, relation2id)
+    # logging.info('#valid: %d' % len(valid_triples))
+    # test_triples = read_triple(os.path.join(args.data_path, 'test.txt'), entity2id, relation2id)
+    # logging.info('#test: %d' % len(test_triples))
+    # hidden_triples = read_triple(os.path.join(args.workspace_path, 'hidden.txt'), entity2id, relation2id)
+    # logging.info('#hidden: %d' % len(hidden_triples))
+
     train_triples = read_triple(os.path.join(args.workspace_path, 'train_kge.txt'), entity2id, relation2id)
     logging.info('#train: %d' % len(train_triples))
     train_original_triples = read_triple(os.path.join(args.data_path, 'train.txt'), entity2id, relation2id)
     logging.info('#train original: %d' % len(train_original_triples))
-    valid_triples = read_triple(os.path.join(args.data_path, 'valid.txt'), entity2id, relation2id)
+    valid_triples = read_triple(os.path.join(args.data_path, 'kg_val_triples_Cell_Phones_and_Accessories.txt'), entity2id, relation2id)
     logging.info('#valid: %d' % len(valid_triples))
-    test_triples = read_triple(os.path.join(args.data_path, 'test.txt'), entity2id, relation2id)
+    test_triples = read_triple(os.path.join(args.data_path, 'kg_test_triples_Cell_Phones_and_Accessories.txt'), entity2id, relation2id)
     logging.info('#test: %d' % len(test_triples))
-    hidden_triples = read_triple(os.path.join(args.workspace_path, 'hidden.txt'), entity2id, relation2id)
+    test_candidates = np.load(os.path.join(args.data_path, 'rec_test_candidate100.npz'))['candidates'][:, 1:]
+    # test_candidates = np.load('/common/users/yz956/kg/code/OpenDialKG/cand.npy')
+    # hidden_triples = read_triple(os.path.join(args.workspace_path, 'hidden.txt'), entity2id, relation2id)
+    hidden_triples = read_triple("/common/users/yz956/kg/code/KBRD/data/cpa/cpa/hidden10_cpa.txt", entity2id, relation2id)
     logging.info('#hidden: %d' % len(hidden_triples))
     
     #All true triples
@@ -306,8 +354,10 @@ def main(args):
     
     logging.info('Start Training...')
     logging.info('init_step = %d' % init_step)
-    logging.info('learning_rate = %d' % current_learning_rate)
+    if args.do_train:
+        logging.info('learning_rate = %f' % current_learning_rate)
     logging.info('batch_size = %d' % args.batch_size)
+    logging.info('test_batch_size = %d' % args.test_batch_size)
     logging.info('negative_adversarial_sampling = %d' % args.negative_adversarial_sampling)
     logging.info('hidden_dim = %d' % args.hidden_dim)
     logging.info('gamma = %f' % args.gamma)
@@ -339,10 +389,12 @@ def main(args):
             if step >= warm_up_steps:
                 current_learning_rate = current_learning_rate / 10
                 logging.info('Change learning_rate to %f at step %d' % (current_learning_rate, step))
-                optimizer = torch.optim.Adam(
-                    filter(lambda p: p.requires_grad, kge_model.parameters()), 
-                    lr=current_learning_rate
-                )
+                # optimizer = torch.optim.Adam(
+                #     filter(lambda p: p.requires_grad, kge_model.parameters()), 
+                #     lr=current_learning_rate
+                # )
+                for param_group in optimizer.param_groups:
+                    param_group['lr'] = current_learning_rate
                 warm_up_steps = warm_up_steps * 3
             
             if step % args.save_checkpoint_steps == 0:
@@ -398,7 +450,7 @@ def main(args):
     
     if args.do_test:
         logging.info('Evaluating on Test Dataset...')
-        metrics, preds = kge_model.test_step(kge_model, test_triples, all_true_triples, args)
+        metrics, preds = kge_model.test_step(kge_model, test_triples, test_candidates, all_true_triples, args)
         log_metrics('Test', step, metrics)
         
         # --------------------------------------------------
@@ -415,7 +467,8 @@ def main(args):
             # Save the predictions on test data
             with open(local_path + '/pred_kge.txt', 'w') as fo:
                 for h, r, t, f, rk, l in preds:
-                    fo.write('{}\t{}\t{}\t{}\t{}\n'.format(id2entity[h], id2relation[r], id2entity[t], f, rk))
+                    # fo.write('{}\t{}\t{}\t{}\t{}\n'.format(id2entity[h], id2relation[r], id2entity[t], f, rk))
+                    fo.write('{}\t{}\t{}\t{}\t{}\n'.format(str(h), str(t), str(r), f, rk))
                     for e, val in l:
                         fo.write('{}:{:.4f} '.format(id2entity[e], val))
                     fo.write('\n')
@@ -427,10 +480,36 @@ def main(args):
 
     if args.record:
         # Annotate hidden triplets
-        scores = kge_model.infer_step(kge_model, hidden_triples, args)
+        ann, train = [], []
+        d = {}
+        with open('../../sample_pre.txt') as ft:
+            for line in ft:
+                line = line.strip().split('\t')
+                train.append(line[1:])
+        for u in range(61254):
+            hiddens = []
+            for i in range(61254, 108858):
+                hiddens.append((u, 0, i))
+            scores = kge_model.infer_step(kge_model, hiddens, args)
+            score_np = np.array(scores)
+            d = dict(zip(range(61254, 108858), scores))
+            d = sorted(d.items(), key=lambda x: x[1], reverse=True)
+            
+            d_50 = d[:50]
+            for idx, t in enumerate(train[u]):
+                for (tt, prob) in d_50:
+                    if int(t) == tt:
+                        d_50.remove((tt, prob))
+                        d_50.append(d[50 + idx])
+            assert len(d_50) == 50
+            d = {}
+
+            d_50 = d
+            ann.append(d_50)
         with open(local_path + '/annotation.txt', 'w') as fo:
-            for (h, r, t), s in zip(hidden_triples, scores):
-                fo.write('{}\t{}\t{}\t{}\n'.format(id2entity[h], id2relation[r], id2entity[t], s))
+            for idx, d in enumerate(ann):
+                for (t, score) in d:
+                    fo.write(str(idx) + '\t' + str(t) + '\t0\t' + str(score) + '\n')
     
     if args.evaluate_train:
         logging.info('Evaluating on Training Dataset...')

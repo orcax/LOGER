@@ -30,16 +30,17 @@ then
 
 echo "Start Training......"
 
-CUDA_VISIBLE_DEVICES=$GPU_DEVICE python -u $CODE_PATH/run.py --do_train \
+CUDA_VISIBLE_DEVICES=$GPU_DEVICE python -u $CODE_PATH/run.py \
+    --do_train \
     --cuda \
-    --do_valid \
     --do_test \
     --data_path $DATA_PATH \
     --model $MODEL \
     -n $NEGATIVE_SAMPLE_SIZE -b $BATCH_SIZE -d $HIDDEN_DIM \
-    -g $GAMMA -a $ALPHA -adv --record --valid_steps 50000 \
+    -g $GAMMA -a $ALPHA -adv --record --valid_steps 400000 \
     -lr $LEARNING_RATE --max_steps $MAX_STEPS \
     -save $SAVE --test_batch_size $TEST_BATCH_SIZE --workspace_path $WORKSPACE_PATH --topk $TOP_K \
+    # -init $SAVE \
     ${15} ${16} ${17} ${18} ${19} ${20} ${21}
 
 
@@ -55,7 +56,15 @@ then
 
 echo "Start Evaluation on Test Data Set......"
 
-CUDA_VISIBLE_DEVICES=$GPU_DEVICE python -u $CODE_PATH/run.py --do_test --cuda -init $SAVE
+CUDA_VISIBLE_DEVICES=$GPU_DEVICE python -u $CODE_PATH/run.py --do_test --record --cuda -init $SAVE --workspace_path $WORKSPACE_PATH
+
+elif [ $MODE == "record" ]
+then
+
+echo "Recording......"
+
+CUDA_VISIBLE_DEVICES=$GPU_DEVICE python -u $CODE_PATH/run.py --record --cuda -init $SAVE --workspace_path $WORKSPACE_PATH
+
 
 else
    echo "Unknown MODE" $MODE

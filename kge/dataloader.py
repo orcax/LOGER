@@ -119,10 +119,11 @@ class TrainDataset(Dataset):
 
     
 class TestDataset(Dataset):
-    def __init__(self, triples, all_true_triples, nentity, nrelation, mode):
+    def __init__(self, triples, candidates, all_true_triples, nentity, nrelation, mode):
         self.len = len(triples)
         self.triple_set = set(all_true_triples)
         self.triples = triples
+        self.candidate_set = candidates
         self.nentity = nentity
         self.nrelation = nrelation
         self.mode = mode
@@ -132,6 +133,7 @@ class TestDataset(Dataset):
     
     def __getitem__(self, idx):
         head, relation, tail = self.triples[idx]
+        candidates = self.candidate_set[idx]
 
         if self.mode == 'head-batch':
             tmp = [(0, rand_head) if (rand_head, relation, tail) not in self.triple_set
@@ -149,8 +151,11 @@ class TestDataset(Dataset):
         negative_sample = tmp[:, 1]
 
         positive_sample = torch.LongTensor((head, relation, tail))
+
+        candidates = torch.LongTensor(candidates)
+        assert candidates.size(0) == 101
             
-        return positive_sample, negative_sample, filter_bias, self.mode
+        return positive_sample, negative_sample, filter_bias, self.mode, candidates
     
     @staticmethod
     def collate_fn(data):
@@ -158,7 +163,8 @@ class TestDataset(Dataset):
         negative_sample = torch.stack([_[1] for _ in data], dim=0)
         filter_bias = torch.stack([_[2] for _ in data], dim=0)
         mode = data[0][3]
-        return positive_sample, negative_sample, filter_bias, mode
+        candidates = torch.stack([_[4] for _ in data], dim=0)
+        return positive_sample, negative_sample, filter_bias, mode, candidates
     
 class BidirectionalOneShotIterator(object):
     def __init__(self, dataloader_head, dataloader_tail):

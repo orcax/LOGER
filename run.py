@@ -3,8 +3,11 @@ import os
 import datetime
 from utils import augment_triplet, evaluate
 
-dataset = 'FB15k'
-path = './record'
+# dataset = './data/FB15k'
+# path = '/common/users/yz956/kg/code/pLogicNet/record'
+dataset = '/common/users/yz956/kg/code/KBRD/data/cpa/cpa'
+path = '/common/users/yz956/kg/code/pLogicNet/record'
+datalist = ['cpa', 'ggf', 'aut', 'tog']
 
 iterations = 2
 
@@ -14,7 +17,7 @@ kge_neg = 256
 kge_dim = 100
 kge_gamma = 24
 kge_alpha = 1
-kge_lr = 0.001
+kge_lr = 0.0001
 kge_iters = 10000
 kge_tbatch = 16
 kge_reg = 0.0
@@ -39,6 +42,8 @@ if kge_model == 'TransE':
         kge_batch, kge_neg, kge_dim, kge_gamma, kge_alpha, kge_lr, kge_iters, kge_tbatch = 512, 1024, 500, 12.0, 0.5, 0.0001, 80000, 8
     if dataset.split('/')[-1] == 'wn18rr':
         kge_batch, kge_neg, kge_dim, kge_gamma, kge_alpha, kge_lr, kge_iters, kge_tbatch = 512, 1024, 500, 6.0, 0.5, 0.00005, 80000, 8
+    if dataset.split('/')[-1] in datalist:
+        kge_batch, kge_neg, kge_dim, kge_gamma, kge_alpha, kge_lr, kge_iters, kge_tbatch = 256, 256, 1000, 24.0, 1.0, 0.0001, 150000, 1
 
 if kge_model == 'DistMult':
     if dataset.split('/')[-1] == 'FB15k':
@@ -77,8 +82,13 @@ if dataset.split('/')[-1] == 'wn18rr':
     mln_threshold_of_triplet = 0.5
     weight = 100
 
+if dataset.split('/')[-1] in datalist:
+    mln_threshold_of_rule = 0.1
+    mln_threshold_of_triplet = 0.3
+    weight = 0.5 
+
 mln_iters = 1000
-mln_lr = 0.0001
+mln_lr = 0.00001
 mln_threads = 8
 
 # ------------------------------------------
@@ -101,7 +111,7 @@ def cmd_mln(main_path, workspace_path=None, preprocessing=False):
     if preprocessing == True:
         return './mln/mln -observed {}/train.txt -out-hidden {}/hidden.txt -save {}/mln_saved.txt -thresh-rule {} -iterations 0 -threads {}'.format(main_path, main_path, main_path, mln_threshold_of_rule, mln_threads)
     else:
-        return './mln/mln -load {}/mln_saved.txt -probability {}/annotation.txt -out-prediction {}/pred_mln.txt -out-rule {}/rule.txt -thresh-triplet 1 -iterations {} -lr {} -threads {}'.format(main_path, workspace_path, workspace_path, workspace_path, mln_iters, mln_lr, mln_threads)
+        return './mln/mln -load {}/mln_saved.txt -probability {}/annotation.txt -out-prediction {}/pred_mln.txt -out-rule {}/rules_test.txt -thresh-triplet {} -iterations {} -lr {} -threads {} -rule {}/rules.txt'.format(main_path, workspace_path, workspace_path, workspace_path, mln_threshold_of_triplet, mln_iters, mln_lr, mln_threads, main_path)
 
 def save_cmd(save_path):
     with open(save_path, 'w') as fo:
@@ -124,28 +134,35 @@ def save_cmd(save_path):
         fo.write('mln_threads: {}\n'.format(mln_threads))
         fo.write('weight: {}\n'.format(weight))
 
-time = str(datetime.datetime.now()).replace(' ', '_')
-path = path + '/' + time
+#  time = str(datetime.datetime.now()).replace(' ', '_')
+#  path = path + '/' + time
+#  ensure_dir(path)
+#  save_cmd('{}/cmd.txt'.format(path))
+
+# ------------------------------------------
+
+path = path + '/cpa30'
 ensure_dir(path)
 save_cmd('{}/cmd.txt'.format(path))
 
 # ------------------------------------------
 
-os.system('cp {}/train.txt {}/train.txt'.format(dataset, path))
-os.system('cp {}/train.txt {}/train_augmented.txt'.format(dataset, path))
-os.system(cmd_mln(path, preprocessing=True))
+#  os.system('cp {}/train.txt {}/train.txt'.format(dataset, path))
+#  os.system('cp {}/train.txt {}/train_augmented.txt'.format(dataset, path))
+#  os.system(cmd_mln(path, preprocessing=True))
 
-for k in range(iterations):
+for k in range(0, 1):
 
     workspace_path = path + '/' + str(k)
     ensure_dir(workspace_path)
 
-    os.system('cp {}/train_augmented.txt {}/train_kge.txt'.format(path, workspace_path))
-    os.system('cp {}/hidden.txt {}/hidden.txt'.format(path, workspace_path))
-    os.system(cmd_kge(workspace_path, kge_model))
+    #  os.system('cp {}/train_augmented.txt {}/train_kge.txt'.format(path, workspace_path))
+    #  os.system('cp {}/hidden_kprn.txt {}/hidden_kprn.txt'.format(path, workspace_path))
+    #  os.system('cp {}/hidden50.txt {}/hidden50.txt'.format(path, workspace_path))
+    #  os.system(cmd_kge(workspace_path, kge_model))
 
     os.system(cmd_mln(path, workspace_path, preprocessing=False))
-    augment_triplet('{}/pred_mln.txt'.format(workspace_path), '{}/train.txt'.format(path), '{}/train_augmented.txt'.format(workspace_path), mln_threshold_of_triplet)
-    os.system('cp {}/train_augmented.txt {}/train_augmented.txt'.format(workspace_path, path))
+    #  augment_triplet('{}/mln_10.31.txt'.format(workspace_path), '{}/train.txt'.format(path), '{}/train_augmented.txt'.format(workspace_path), mln_threshold_of_triplet)
+    #  os.system('cp {}/train_augmented.txt {}/train_augmented.txt'.format(workspace_path, path))
 
-    evaluate('{}/pred_mln.txt'.format(workspace_path), '{}/pred_kge.txt'.format(workspace_path), '{}/result_kge_mln.txt'.format(workspace_path), weight)
+    # evaluate('{}/pred_mln.txt'.format(workspace_path), '{}/pred_kge.t 7 cc 7xt'.format(workspace_path), '{}/result_kge_mln.txt'.format(workspace_path), weight)
