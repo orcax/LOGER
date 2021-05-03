@@ -1,7 +1,0 @@
-*.txt
-*.npy
-eval_mln.py
-data/
-__pycache__/
-rule.py
-trans_kprn.py
